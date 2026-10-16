@@ -23,6 +23,12 @@ void boardScreenOff() {
 
 bool boardScreenIsOn() { return screenOn; }
 
+const uint16_t *boardFrameBuffer() {
+  void *fb = nullptr;
+  esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &fb);
+  return (const uint16_t *)fb;
+}
+
 // ---------- display ----------
 
 static void flushCb(lv_display_t *disp, const lv_area_t *a, uint8_t *px) {

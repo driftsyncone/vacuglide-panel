@@ -8,6 +8,12 @@ home-automation hub is needed once it's set up.
 > Unofficial community project. Not made, endorsed or supported by Autoblow.
 > "Autoblow" and "VacuGlide" are trademarks of their owners.
 
+| Remote | Autopilot | Scripts |
+|---|---|---|
+| ![Remote tab](docs/remote.png) | ![Autopilot tab](docs/autopilot.png) | ![Scripts tab](docs/scripts.png) |
+
+<sub>Screenshots taken from the panel itself (`GET /screenshot`), with the VacuGlide switched off.</sub>
+
 ## What it does
 
 - **Remote:** speed slider (5-100 %), Start/Pause, hold-to-open Stroke - /
@@ -66,6 +72,10 @@ Back up the stock firmware first if you might want it back:
 panel's mDNS name). Override with `PANEL_HOST=192.168.x.y` or a second argument.
 If the panel sits on an isolated IoT network, allow your computer to reach it
 on TCP port 80.
+
+`GET /screenshot?tab=0..3` (same login) returns the screen as a BMP and can
+switch tabs first: 0 Remote, 1 Autopilot, 2 Scripts, 3 Settings. Settings shows
+your token, so don't share that one.
 
 ## How it's built
 

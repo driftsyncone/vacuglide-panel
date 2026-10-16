@@ -2,3 +2,5 @@
 #pragma once
 
 void uiBegin();
+// Switch to tab 0..3 (Remote, Autopilot, Scripts, Settings) and redraw now.
+void uiShowTab(int tab);

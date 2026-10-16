@@ -19,6 +19,7 @@ static const lv_color_t CYAN = lv_color_hex(0x00838F);
 static const lv_color_t GREY = lv_color_hex(0x9E9E9E);
 
 static lv_obj_t *statusDot, *statusLabel, *speedLabel, *wifiLabel, *lostBanner;
+static lv_obj_t *tabview;
 static lv_obj_t *rSlider, *rSliderLabel, *rStartBtn;
 static lv_obj_t *apStartBtn, *apStateLabel, *apBar;
 static lv_obj_t *scButtons[SCRIPT_SLOTS], *scToggleBtn;
@@ -618,7 +619,7 @@ void uiBegin() {
 
   buildTopBar(scr);
 
-  lv_obj_t *tv = lv_tabview_create(scr);
+  lv_obj_t *tv = tabview = lv_tabview_create(scr);
   lv_obj_set_size(tv, 800, 480 - 64);
   lv_obj_align(tv, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_tabview_set_tab_bar_size(tv, 52);
@@ -630,4 +631,10 @@ void uiBegin() {
 
   lv_timer_create(refresh, 200, nullptr);
   refresh(nullptr);
+}
+
+void uiShowTab(int tab) {
+  lv_tabview_set_active(tabview, constrain(tab, 0, 3), LV_ANIM_OFF);
+  refresh(nullptr);
+  lv_refr_now(nullptr);
 }
