@@ -57,15 +57,14 @@ paid or saw in 2026 and change often.
 | 2 | **1S LiPo, 3.7 V 3000 mAh, size 103665** (≈10 × 36 × 65 mm) with a **JST 1.25 mm** 2-pin plug | [Amazon B0CG1TCXVZ](https://www.amazon.com/dp/B0CG1TCXVZ) (sold as a Miyoo Mini battery) | ~$10–15 | Plugs straight into the board's BAT socket |
 | 3 | **Case**: xTouch Pro enclosure for the Guition 5" | [USB-C variant](https://makerworld.com/en/models/1127192-xtouch-pro-usb-hole-variant) (recommended) or [official base with pogo-pin charging](https://makerworld.com/en/models/1016156-xtouch-pro-official-base-for-guition-5inch-lcd) | print it | See "Case" below |
 | 4 | USB-C cable + a **2 A or better** USB charger | anywhere | — | The board charges and runs at the same time |
-| 5 | Autoblow **VacuGlide** online, and its **device token** | [Autoblow developer docs](https://developers.autoblow.com/) | — | |
 
 Optional, for a battery % on screen (see [Battery level](#battery-level-optional)):
 
 | # | Part | Where | ~Price |
 |---|---|---|---|
-| 6 | Adafruit **MAX17048** fuel gauge, STEMMA QT | [Adafruit #5580](https://www.adafruit.com/product/5580) | $5.95 |
-| 7 | STEMMA QT → male header cable (red 3.3 V, black GND, blue SDA, yellow SCL) | [Adafruit #4209](https://www.adafruit.com/product/4209) | $0.95 |
-| 8 | 2 × **JST 1.25 mm ↔ JST-PH 2.0 mm** 2-pin adapters (the gauge has PH 2.0 ports; battery and board are 1.25 mm), or splice the wires | electronics/hobby shops | ~$5 |
+| 5 | Adafruit **MAX17048** fuel gauge, STEMMA QT | [Adafruit #5580](https://www.adafruit.com/product/5580) | $5.95 |
+| 6 | STEMMA QT → male header cable (red 3.3 V, black GND, blue SDA, yellow SCL) | [Adafruit #4209](https://www.adafruit.com/product/4209) | $0.95 |
+| 7 | 2 × **JST 1.25 mm ↔ JST-PH 2.0 mm** 2-pin adapters (the gauge has PH 2.0 ports; battery and board are 1.25 mm), or splice the wires | electronics/hobby shops | ~$5 |
 | — | The **JST 1.25 mm 4-pin to female jumper ("Dupont") cable** that comes in the box with the board | included | — |
 
 ### Getting the right board
@@ -135,7 +134,7 @@ Wiring with the parts above:
 1. Battery → adapter → the gauge's JST-PH port; the gauge's other JST-PH port →
    adapter → board **BAT**. The gauge passes power straight through.
 2. Plug the board's included 4-pin cable into **P4**, and push the male pins of
-   cable #7 (from the gauge's STEMMA QT port) into its female ends:
+   cable #6 (from the gauge's STEMMA QT port) into its female ends:
    red → 3.3 V, black → GND, blue (SDA) → GPIO17, yellow (SCL) → GPIO18.
    Go by the pin labels printed next to P4 on the board, not by the included
    cable's wire colours, which don't follow a standard.
