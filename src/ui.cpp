@@ -5,6 +5,7 @@
 #include <lvgl.h>
 
 #include "autoblow.h"
+#include "battery.h"
 #include "board.h"
 #include "control.h"
 #include "settings.h"
@@ -19,6 +20,7 @@ static const lv_color_t CYAN = lv_color_hex(0x00838F);
 static const lv_color_t GREY = lv_color_hex(0x9E9E9E);
 
 static lv_obj_t *statusDot, *statusLabel, *speedLabel, *wifiLabel, *lostBanner;
+static lv_obj_t *battLabel, *battBanner;
 static lv_obj_t *tabview;
 static lv_obj_t *rSlider, *rSliderLabel, *rStartBtn;
 static lv_obj_t *apStartBtn, *apStateLabel, *apBar;
@@ -192,6 +194,21 @@ static void buildTopBar(lv_obj_t *scr) {
   wifiLabel = lv_label_create(bar);
   lv_obj_set_style_text_font(wifiLabel, &lv_font_montserrat_14, 0);
   lv_obj_align(wifiLabel, LV_ALIGN_LEFT_MID, 418, 0);
+
+  // Under the Wi-Fi signal once a fuel gauge answers (see refresh()).
+  battLabel = lv_label_create(bar);
+  lv_obj_set_style_text_font(battLabel, &lv_font_montserrat_14, 0);
+  lv_obj_align(battLabel, LV_ALIGN_LEFT_MID, 418, 11);
+  lv_obj_add_flag(battLabel, LV_OBJ_FLAG_HIDDEN);
+
+  battBanner = lv_label_create(lv_layer_top());
+  lv_obj_set_size(battBanner, 800, LV_SIZE_CONTENT);
+  lv_obj_align(battBanner, LV_ALIGN_BOTTOM_MID, 0, 0);  // bottom: keeps the tabs usable
+  lv_obj_set_style_bg_color(battBanner, RED, 0);
+  lv_obj_set_style_bg_opa(battBanner, LV_OPA_COVER, 0);
+  lv_obj_set_style_pad_all(battBanner, 10, 0);
+  lv_label_set_long_mode(battBanner, LV_LABEL_LONG_WRAP);
+  lv_obj_add_flag(battBanner, LV_OBJ_FLAG_HIDDEN);
 
   // Shown when the link drops while the device was moving: STOP can't reach it.
   lostBanner = lv_label_create(lv_layer_top());
@@ -561,7 +578,34 @@ static void refresh(lv_timer_t *) {
   if (w.up) lv_label_set_text_fmt(wifiLabel, LV_SYMBOL_WIFI " %d", w.rssi);
   else lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI " --");
 
+  // Battery (only with a fuel gauge): stack it under the Wi-Fi signal.
+  battery::Info b = battery::info();
+  static bool hadGauge;
+  if (b.present != hadGauge) {
+    hadGauge = b.present;
+    lv_obj_align(wifiLabel, LV_ALIGN_LEFT_MID, 418, b.present ? -11 : 0);
+    lv_obj_set_flag(battLabel, LV_OBJ_FLAG_HIDDEN, !b.present);
+  }
+  if (b.present) {
+    int pct = lroundf(b.percent);
+    const char *icon = pct > 80 ? LV_SYMBOL_BATTERY_FULL : pct > 55 ? LV_SYMBOL_BATTERY_3
+                     : pct > 30 ? LV_SYMBOL_BATTERY_2 : pct > 10 ? LV_SYMBOL_BATTERY_1
+                     : LV_SYMBOL_BATTERY_EMPTY;
+    lv_label_set_text_fmt(battLabel, "%s%s %d%%", b.charging ? LV_SYMBOL_CHARGE " " : "", icon, pct);
+    lv_obj_set_style_text_color(battLabel, b.charging || pct > 20 ? GREEN : pct > 10 ? ORANGE : RED, 0);
+  }
+
   bool moving = deviceMoving(st);
+
+  // Nearly empty on battery: keep the device stopped, so the panel can't die mid-run
+  // and leave it running with nothing to stop it. Plugging in USB lifts this
+  // (MAX17048 sees the charge; with a MAX17043 it lifts once the level passes 5 %).
+  bool empty = b.present && !b.charging && b.percent <= 5;
+  if (empty && a != Active::None) control::stopAll();
+  if (empty)
+    lv_label_set_text_fmt(battBanner, LV_SYMBOL_BATTERY_EMPTY " Battery at %d%%: VacuGlide control is "
+                          "paused until you plug in USB.", (int)lroundf(b.percent));
+  lv_obj_set_flag(battBanner, LV_OBJ_FLAG_HIDDEN, !empty);
   // Remember the last thing the device told us while it was reachable.
   static bool lastMoving;
   if (st.online) lastMoving = moving;
@@ -602,10 +646,16 @@ static void refresh(lv_timer_t *) {
   else setButtonText(scToggleBtn, LV_SYMBOL_PLAY " Resume", GREEN);
 
   // Settings
+  char battLine[64];
+  if (b.present)
+    snprintf(battLine, sizeof battLine, "Battery %d%%, %.2f V%s (%s)", (int)lroundf(b.percent),
+             b.volts, b.charging ? ", charging" : "", b.chip);
+  else
+    snprintf(battLine, sizeof battLine, "Battery level: no fuel gauge connected");
   if (w.up)
-    lv_label_set_text_fmt(stInfo, "Panel %s, signal %d dBm\nBuilt " __DATE__,
-                          WiFi.localIP().toString().c_str(), w.rssi);
-  else lv_label_set_text_fmt(stInfo, "Wi-Fi: %s\nBuilt " __DATE__, w.problem);
+    lv_label_set_text_fmt(stInfo, "Panel %s, signal %d dBm\n%s\nBuilt " __DATE__,
+                          WiFi.localIP().toString().c_str(), w.rssi, battLine);
+  else lv_label_set_text_fmt(stInfo, "Wi-Fi: %s\n%s\nBuilt " __DATE__, w.problem, battLine);
 
   // Screen sleep, only while nothing runs, so STOP is always one tap away.
   if (boardScreenIsOn() && settings.sleepMin > 0 && a == Active::None && !lost &&

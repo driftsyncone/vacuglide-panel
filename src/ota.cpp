@@ -3,9 +3,11 @@
 #include <Arduino.h>
 #include <Update.h>
 #include <WebServer.h>
+#include <Wire.h>
 
 #include "board.h"
 #include "control.h"
+#include "rollback.h"
 #include "secrets.h"
 #include "ui.h"
 
@@ -74,10 +76,46 @@ static void onScreenshot() {
   for (int y = H - 1; y >= 0; y--) server.sendContent((const char *)(fb + y * W), ROW);
 }
 
+// GET /i2c: which chips answer on the touch bus and on the P4 connector, plus the
+// IP5306's status registers if it is the I2C variant (address 0x75). Diagnostic only.
+static String scanBus(TwoWire &w) {
+  String s;
+  for (uint8_t a = 1; a < 127; a++) {
+    w.beginTransmission(a);
+    if (w.endTransmission() == 0) s += " 0x" + String(a, HEX);
+  }
+  return s.length() ? s : String(" (none)");
+}
+
+static int readReg(TwoWire &w, uint8_t addr, uint8_t reg) {
+  w.beginTransmission(addr);
+  w.write(reg);
+  if (w.endTransmission(false) != 0 || w.requestFrom(addr, (uint8_t)1) != 1) return -1;
+  return w.read();
+}
+
+static void onI2c() {
+  if (!server.authenticate("ota", OTA_PASSWORD)) return server.requestAuthentication();
+  String out = "touch bus (SDA 19, SCL 20):" + scanBus(Wire) + "\n";
+  for (uint8_t reg : {0x00, 0x01, 0x70, 0x71, 0x78}) {
+    int v = readReg(Wire, 0x75, reg);
+    out += "IP5306 reg 0x" + String(reg, HEX) + " = " + (v < 0 ? String("no answer") : "0x" + String(v, HEX)) + "\n";
+  }
+  Wire1.begin(17, 18, 100000);
+  out += "P4 pins (SDA 17, SCL 18):" + scanBus(Wire1) + "\n";
+  Wire1.end();
+  server.send(200, "text/plain", out);
+}
+
 void otaBegin() {
+  server.on("/i2c", HTTP_GET, onI2c);
   server.on("/update", HTTP_POST, onDone, onUpload);
   server.on("/screenshot", HTTP_GET, onScreenshot);
-  server.on("/", HTTP_GET, [] { server.send(200, "text/plain", "vacuglide-panel\n"); });
+  // Build time + probation state, so ota.sh can tell whether an update stuck.
+  server.on("/", HTTP_GET, [] {
+    server.send(200, "text/plain", String("vacuglide-panel\nbuilt " __DATE__ " " __TIME__ "\nfirmware: ") +
+                                       rollback::state() + "\n");
+  });
   server.begin();
 }
 
