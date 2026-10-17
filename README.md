@@ -44,14 +44,117 @@ home-automation hub is needed once it's set up.
   instead of resuming later.
 - Saving settings or installing an update stops the device first.
 
-## You need
+## Build your own
 
-- A Guition **JC8048W550** (ESP32-S3-N16R8 with 8 MB PSRAM, GT911 touch).
-- An Autoblow **VacuGlide** connected to Wi-Fi, and its **device token**
-  (see [Autoblow's developer docs](https://developers.autoblow.com/)).
-- [PlatformIO](https://platformio.org/) (CLI or the VS Code extension).
+Everything below is the exact hardware this panel runs on. Prices are what we
+paid or saw in 2026 and change often.
 
-## Build and flash
+### Parts
+
+| # | Part | Where | ~Price | Notes |
+|---|---|---|---|---|
+| 1 | **Guition JC8048W550C** — ESP32-S3-N16R8, 5" 800×480 IPS, **capacitive** touch | [AliExpress](https://www.aliexpress.us/item/3256807009269027.html), [Surenoo](https://www.surenoo.com/products/23291185) (Guition reseller) | $17–30 | Pick the **capacitive** option (see below) |
+| 2 | **1S LiPo, 3.7 V 3000 mAh, size 103665** (≈10 × 36 × 65 mm) with a **JST 1.25 mm** 2-pin plug | [Amazon B0CG1TCXVZ](https://www.amazon.com/dp/B0CG1TCXVZ) (sold as a Miyoo Mini battery) | ~$10–15 | Plugs straight into the board's BAT socket |
+| 3 | **Case**: xTouch Pro enclosure for the Guition 5" | [USB-C variant](https://makerworld.com/en/models/1127192-xtouch-pro-usb-hole-variant) (recommended) or [official base with pogo-pin charging](https://makerworld.com/en/models/1016156-xtouch-pro-official-base-for-guition-5inch-lcd) | print it | See "Case" below |
+| 4 | USB-C cable + a **2 A or better** USB charger | anywhere | — | The board charges and runs at the same time |
+| 5 | Autoblow **VacuGlide** online, and its **device token** | [Autoblow developer docs](https://developers.autoblow.com/) | — | |
+
+Optional, for a battery % on screen (see [Battery level](#battery-level-optional)):
+
+| # | Part | Where | ~Price |
+|---|---|---|---|
+| 6 | Adafruit **MAX17048** fuel gauge, STEMMA QT | [Adafruit #5580](https://www.adafruit.com/product/5580) | $5.95 |
+| 7 | STEMMA QT → male header cable (red 3.3 V, black GND, blue SDA, yellow SCL) | [Adafruit #4209](https://www.adafruit.com/product/4209) | $0.95 |
+| 8 | 2 × **JST 1.25 mm ↔ JST-PH 2.0 mm** 2-pin adapters (the gauge has PH 2.0 ports; battery and board are 1.25 mm), or splice the wires | electronics/hobby shops | ~$5 |
+| 9 | A **1.25 mm 4-pin** cable for the board's P4 connector, if your board didn't come with one | electronics shops | ~$3 |
+
+### Getting the right board
+
+Listings often sell all three versions on one page and default to the wrong one.
+It's the right board when:
+
+1. It's **Guition JC8048W550** (printed on the back of the board).
+2. You picked **capacitive touch** → **JC8048W550C**. Not N (no touch) or R (resistive).
+3. **ESP32-S3-N16R8** ("8M PSRAM 16M FLASH"), **800×480**, **ST7262** display driver.
+4. The back has a **BAT** socket at the top right, next to the speaker socket.
+   Look-alikes such as the Sunton ESP32-8048S050 may not have the battery circuit.
+
+Guition's spec sheet: [JC8048W550 specifications (PDF)](https://www.guition.com/-download).
+
+### What's on the board
+
+- **Power:** an **IP5306** chip charges the battery from USB-C (~2 A), boosts it to
+  5 V, runs the panel while charging, and cuts off when the cell is low.
+  About 320 mA at 5 V while running.
+- **BAT socket (P7):** JST 1.25 mm, **BAT− left, BAT+ right** (looking at the back,
+  socket at the top). Check your battery's red wire goes to BAT+ before plugging in;
+  a reversed cell can destroy the IP5306.
+- **Battery button:** next to the P5 connector. A short press switches the panel on
+  when it runs from the battery alone.
+- **P4 connector** (from the community pinout; check the silkscreen): GND, 3.3 V,
+  GPIO17, GPIO18. The panel uses it for the optional fuel gauge.
+- Touch (GT911) is on I2C GPIO19/20; backlight on GPIO2.
+
+### Case
+
+The [xTouch Pro](https://makerworld.com/en/models/1127192-xtouch-pro-usb-hole-variant)
+cases were made for this exact board (by the xTouch printer-screen project) and
+print on any FDM printer.
+
+- **USB-C variant (recommended):** the USB-C port stays reachable, so you can
+  charge and, if ever needed, flash firmware over USB without opening the case.
+- **Official base with pogo pins:** charges through magnetic pogo pins on a stand;
+  needs the pogo-pin parts listed on its page, and the case has to come apart to
+  reach USB.
+
+Check the case's battery space fits your cell (the one above is ≈10 × 36 × 65 mm),
+and keep the cell away from the IP5306 and its inductor (top right, near BAT): they
+get warm while charging.
+
+### Assembly
+
+1. **Flash first** ([Flash the firmware](#flash-the-firmware) below) while the board is still bare on your desk.
+2. Check battery polarity (red → BAT+), then plug the battery into **BAT**.
+3. With USB unplugged, **press the battery button** briefly: the panel should start
+   on battery. Plug USB-C in: it keeps running and charges.
+4. Leave it charging for ~10 minutes and feel the battery: warm is fine, **hot means
+   unplug** (the charger runs at ~2 A, about 0.7C for a 3000 mAh cell).
+5. Fit the board and battery in the case.
+
+### Battery level (optional)
+
+The IP5306 has no data connection, so without extra hardware the panel can't
+show the battery level (it runs fine without it). A MAX17048 (or MAX17043)
+fuel gauge adds a battery % under the Wi-Fi signal, voltage on the Settings tab,
+and a safety stop: **at 5 % or less on battery** the panel stops the VacuGlide
+and won't run it until USB is plugged in, so it can't die and leave the device
+running.
+
+Wiring with the parts above:
+
+1. Battery → adapter → the gauge's JST-PH port; the gauge's other JST-PH port →
+   adapter → board **BAT**. The gauge passes power straight through.
+2. Gauge STEMMA QT → cable #7 → board **P4**: red → 3.3 V, black → GND,
+   blue (SDA) → GPIO17, yellow (SCL) → GPIO18.
+   The touch bus (SDA GPIO19, SCL GPIO20) works too.
+
+The panel finds the gauge on either bus by itself, also when plugged in later.
+`GET /i2c` shows what answers (the gauge is at address 0x36).
+
+> Gauge support is new and not yet tried with a real MAX17048; the display was
+> tested with simulated readings. Reports welcome.
+
+### Alternatives
+
+If the Guition board isn't available to you, the closest board is the
+[Waveshare ESP32-S3-Touch-LCD-5](https://www.waveshare.com/esp32-s3-touch-lcd-5.htm)
+(the 800×480 version, **not** the 1024×600 "5B"; [on Amazon](https://www.amazon.com/waveshare-Capacitive-Development-Dual-Core-Resolution/dp/B0DD7N19FT)).
+It has its own battery charger (CS8501, 580 mA) and the same kind of display,
+but **this firmware doesn't support it yet**: it needs a port to its pins.
+
+## Flash the firmware
+
+You need [PlatformIO](https://platformio.org/) (CLI or the VS Code extension).
 
 1. `cp include/secrets.example.h include/secrets.h` and fill it in. Wi-Fi and
    token are only defaults; you can also leave them and set them on the
@@ -86,30 +189,6 @@ on TCP port 80.
 switch tabs first: 0 Remote, 1 Autopilot, 2 Scripts, 3 Settings. Settings shows
 your token, so don't share that one. `GET /i2c` lists the chips answering on the
 touch bus and the P4 connector.
-
-## Running on battery
-
-The JC8048W550 has a battery input built in: an **IP5306** charger/boost chip,
-the 2-pin **BAT** connector (P7, **BAT− left, BAT+ right**, check your cell's
-polarity) and a power button. Use a single-cell (1S) protected LiPo. The IP5306
-charges at about 2 A, so pick a cell rated for that (around 4000 mAh, or one
-whose datasheet allows 1C charging). Press the button to start on battery;
-USB-C charges it while the panel runs.
-
-The IP5306 on this board has no data connection, so the panel can't read the
-battery level by itself. Add a **MAX17048** (or MAX17043) fuel gauge, e.g.
-Adafruit #5580, between the cell and BAT, and connect its I2C to either:
-
-- the **P4** connector (GND, 3.3 V, SDA = GPIO17, SCL = GPIO18), or
-- the touch bus (SDA = GPIO19, SCL = GPIO20).
-
-(Gauge support is new and not yet tried with a real MAX17048; the display was
-tested with simulated readings. Reports welcome.)
-
-The panel finds it automatically (also when plugged in later) and then shows
-the level under the Wi-Fi signal, a charging mark (MAX17048), and voltage on the
-Settings tab. At **5 % or less on battery** it stops the VacuGlide and won't run
-it until USB is plugged in, so the panel can't die and leave the device running.
 
 ## How it's built
 
