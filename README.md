@@ -66,7 +66,7 @@ Optional, for a battery % on screen (see [Battery level](#battery-level-optional
 | 6 | Adafruit **MAX17048** fuel gauge, STEMMA QT | [Adafruit #5580](https://www.adafruit.com/product/5580) | $5.95 |
 | 7 | STEMMA QT → male header cable (red 3.3 V, black GND, blue SDA, yellow SCL) | [Adafruit #4209](https://www.adafruit.com/product/4209) | $0.95 |
 | 8 | 2 × **JST 1.25 mm ↔ JST-PH 2.0 mm** 2-pin adapters (the gauge has PH 2.0 ports; battery and board are 1.25 mm), or splice the wires | electronics/hobby shops | ~$5 |
-| 9 | A **1.25 mm 4-pin** cable for the board's P4 connector, if your board didn't come with one | electronics shops | ~$3 |
+| — | The **JST 1.25 mm 4-pin to female jumper ("Dupont") cable** that comes in the box with the board | included | — |
 
 ### Getting the right board
 
@@ -134,8 +134,11 @@ Wiring with the parts above:
 
 1. Battery → adapter → the gauge's JST-PH port; the gauge's other JST-PH port →
    adapter → board **BAT**. The gauge passes power straight through.
-2. Gauge STEMMA QT → cable #7 → board **P4**: red → 3.3 V, black → GND,
-   blue (SDA) → GPIO17, yellow (SCL) → GPIO18.
+2. Plug the board's included 4-pin cable into **P4**, and push the male pins of
+   cable #7 (from the gauge's STEMMA QT port) into its female ends:
+   red → 3.3 V, black → GND, blue (SDA) → GPIO17, yellow (SCL) → GPIO18.
+   Go by the pin labels printed next to P4 on the board, not by the included
+   cable's wire colours, which don't follow a standard.
    The touch bus (SDA GPIO19, SCL GPIO20) works too.
 
 The panel finds the gauge on either bus by itself, also when plugged in later.
