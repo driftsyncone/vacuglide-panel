@@ -58,6 +58,10 @@ paid or saw in 2026 and change often.
 | 3 | **Case**: xTouch Pro enclosure for the Guition 5" | [USB-C variant](https://makerworld.com/en/models/1127192-xtouch-pro-usb-hole-variant) (recommended) or [official base with pogo-pin charging](https://makerworld.com/en/models/1016156-xtouch-pro-official-base-for-guition-5inch-lcd) | print it | See "Case" below |
 | 4 | USB-C cable + a **2 A or better** USB charger | anywhere | — | The board charges and runs at the same time |
 
+> **Battery not available?** Look for a **Miyoo Mini compatible** replacement
+> battery: they're the same size and plug. Still check that the red wire lands on
+> **BAT+** before plugging in, since sellers don't always wire them the same way.
+
 Optional, for a battery % on screen (see [Battery level](#battery-level-optional)):
 
 | # | Part | Where | ~Price |
