@@ -17,6 +17,12 @@ struct Desired {
   bool scriptPlaying = true;
   bool valvePlus = false;
   bool valveMinus = false;
+  // One-shot vacuum pulse: every new pulseSeq opens the Stroke- valve for
+  // pulseMs, then closes it. Timed by the network task, right where the
+  // requests go out, so the valve really is open for pulseMs. Only while
+  // want == Speed and the valve isn't held; a pulse that fails is skipped.
+  uint32_t pulseSeq = 0;
+  uint16_t pulseMs = 0;
 };
 
 struct Status {
@@ -27,6 +33,7 @@ struct Status {
   bool valvePlus = false, valveMinus = false;
   int localScript = 0;
   char error[64] = "";
+  uint32_t lost = 0;    // how often the device dropped off (Wi-Fi down or 502)
 };
 
 void begin();
@@ -35,6 +42,9 @@ Desired desired();
 void setDesired(const Desired &d);
 // Forget what was sent, so the next pass resends everything (used by STOP).
 void resync();
+// After a loss the task only sends STOP until the UI has seen Status::lost
+// change and acknowledged it (so a stale speed can't be resent first).
+void ackLost();
 
 Status status();
 

@@ -4,12 +4,16 @@
 #include <ESPmDNS.h>
 #include <WiFi.h>
 
+#include "secrets.h"
 #include "settings.h"
 
 namespace wlan {
 
 // DHCP hostname and mDNS name (vgremote.local).
-static const char *HOSTNAME = "vgremote";
+#ifndef PANEL_HOSTNAME  // set in secrets.h to tell several panels apart
+#define PANEL_HOSTNAME "vgremote"
+#endif
+static const char *HOSTNAME = PANEL_HOSTNAME;
 
 // Written by the Wi-Fi event task, read on the loop task.
 static volatile int lastReason;  // 0 = none yet
@@ -105,13 +109,34 @@ static const char *reasonText(int r) {
   }
 }
 
+static bool fixable(int r) {
+  switch (r) {
+    case WIFI_REASON_NO_AP_FOUND:
+    case WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY:
+    case WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD:
+    case WIFI_REASON_NO_AP_FOUND_IN_RSSI_THRESHOLD:
+    case WIFI_REASON_AUTH_FAIL:
+    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_MIC_FAILURE:
+      return true;
+    default: return false;
+  }
+}
+
 Info info() {
   Info i;
   i.up = WiFi.status() == WL_CONNECTED && gotIp;
   i.rssi = i.up ? rssi : 0;
-  if (i.up) i.problem = "";
-  else if (!settings.wifiSsid.length()) i.problem = "not set up";
-  else i.problem = reasonText(lastReason);
+  if (i.up) {
+    i.problem = "";
+  } else if (!settings.wifiSsid.length()) {
+    i.problem = "not set up";
+    i.fixable = true;
+  } else {
+    i.problem = reasonText(lastReason);
+    i.fixable = fixable(lastReason);
+  }
   return i;
 }
 

@@ -1,6 +1,6 @@
-// What the panel is doing: manual remote, Autopilot (edging), or a local script.
-// Ports the logic of fun.autoblow.com's VacuGlide pages; runs on the LVGL
-// thread from a 100 ms timer and only ever sets autoblow::Desired.
+// What the panel is doing: manual remote, Autopilot (our own edging generator),
+// or a local script. Runs on the LVGL thread from a 100 ms timer and only ever
+// sets autoblow::Desired.
 #pragma once
 
 namespace control {
@@ -43,5 +43,7 @@ bool scriptPlaying();
 
 // Everything off, valves closed, and resend it all.
 void stopAll();
+// stopAll(), then restart the panel once the device has stopped (5 s at most).
+void stopAndRestart();
 
 }  // namespace control

@@ -17,6 +17,9 @@ static TaskHandle_t task;
 static Desired want;
 static Status stat;
 static bool resyncReq;
+static uint32_t lostAcked;
+static uint32_t pulseDone;  // last Desired::pulseSeq acted on
+static char token[80];  // own copy: settings.token is a String the UI may reassign
 
 // What the device was last told. -1 = unknown.
 struct Sent {
@@ -53,6 +56,14 @@ void resync() {
   {
     Lock l;
     resyncReq = true;
+  }
+  if (task) xTaskNotifyGive(task);
+}
+
+void ackLost() {
+  {
+    Lock l;
+    lostAcked = stat.lost;
   }
   if (task) xTaskNotifyGive(task);
 }
@@ -99,7 +110,7 @@ static int request(esp_http_client_method_t method, const std::string &url,
   body.clear();
   esp_http_client_set_url(http, url.c_str());
   esp_http_client_set_method(http, method);
-  esp_http_client_set_header(http, "x-device-token", settings.token.c_str());
+  esp_http_client_set_header(http, "x-device-token", token);
   // The API wants no Content-Type on requests without a body.
   if (json) {
     esp_http_client_set_header(http, "Content-Type", "application/json");
@@ -131,8 +142,15 @@ static void parseState() {
 
 static void setOnline(bool on) {
   Lock l;
+  if (stat.online && !on) stat.lost++;
   stat.online = on;
   if (on) stat.error[0] = 0;
+}
+
+// What to work toward: Idle until the UI has acknowledged the last loss.
+static Desired target() {
+  Lock l;
+  return lostAcked == stat.lost ? want : Desired();
 }
 
 static bool discover() {
@@ -167,43 +185,70 @@ static bool step(const Desired &d, Sent &s) {
     return code;
   };
 
+  // A command counts as delivered on 2xx. A 4xx other than 429 (e.g. script start
+  // in the wrong mode) is recorded as sent too, since resending it won't help.
+  // 429, 5xx and network errors leave Sent alone, so the command is retried.
+  auto landed = [&] { return (code >= 200 && code < 300) || (code >= 400 && code < 500 && code != 429); };
+
   // 1. Stop first, so STOP is never queued behind anything else.
   if (d.want == Want::Idle && s.want != (int)Want::Idle) {
-    if (s.want != (int)Want::Script) put("/vacuglide/target-speed/stop");
-    if (code < 0) return true;
-    if (s.want != (int)Want::Speed) put("/vacuglide/local-script/stop");
-    if (code < 0) return true;
-    s.want = (int)Want::Idle;
-    s.scriptPlaying = -1;
+    bool speedStop = s.want != (int)Want::Script;
+    if (speedStop) put("/vacuglide/target-speed/stop");
+    if (s.want != (int)Want::Speed && (!speedStop || landed())) put("/vacuglide/local-script/stop");
+    if (landed()) {
+      s.want = (int)Want::Idle;
+      s.scriptPlaying = -1;
+    }
   }
   // 2. Valves.
   else if (s.valvePlus != d.valvePlus) {
     snprintf(json, sizeof json, "{\"valveState\":%s}", d.valvePlus ? "true" : "false");
-    if (put("/vacuglide/valve/stroke-plus", json) >= 0) s.valvePlus = d.valvePlus;
+    put("/vacuglide/valve/stroke-plus", json);
+    if (landed()) s.valvePlus = d.valvePlus;
   } else if (s.valveMinus != d.valveMinus) {
     snprintf(json, sizeof json, "{\"valveState\":%s}", d.valveMinus ? "true" : "false");
-    if (put("/vacuglide/valve/stroke-minus", json) >= 0) s.valveMinus = d.valveMinus;
+    put("/vacuglide/valve/stroke-minus", json);
+    if (landed()) s.valveMinus = d.valveMinus;
   }
-  // 3. Speed.
+  // 3. Vacuum pulse: open, hold (but let STOP or a held valve cut it short), close.
+  else if (d.want == Want::Speed && d.pulseSeq != pulseDone) {
+    pulseDone = d.pulseSeq;
+    if (!d.valveMinus) {
+      put("/vacuglide/valve/stroke-minus", "{\"valveState\":true}");
+      if (code >= 200 && code < 300) {
+        uint32_t t0 = millis();
+        while (millis() - t0 < d.pulseMs) {
+          vTaskDelay(pdMS_TO_TICKS(25));
+          Desired now = target();
+          if (now.want != Want::Speed || now.valveMinus) break;
+        }
+        put("/vacuglide/valve/stroke-minus", "{\"valveState\":false}");
+        s.valveMinus = landed() ? 0 : 1;  // 1: the valve branch retries the close
+      }
+    }
+  }
+  // 4. Speed.
   else if (d.want == Want::Speed && (s.want != (int)Want::Speed || s.speed != d.speed)) {
     snprintf(json, sizeof json, "{\"targetSpeed\":%d}", d.speed);
-    if (put("/vacuglide/target-speed", json) >= 0) {
+    put("/vacuglide/target-speed", json);
+    if (landed()) {
       s.want = (int)Want::Speed;
       s.speed = d.speed;
     }
   }
-  // 4. Local scripts. Selecting one starts it and closes both valves.
+  // 5. Local scripts. Selecting one starts it and closes both valves.
   else if (d.want == Want::Script && (s.want != (int)Want::Script || s.script != d.script)) {
     snprintf(json, sizeof json, "{\"localScriptIndex\":%d}", d.script);
-    if (put("/vacuglide/local-script", json) >= 0) {
+    put("/vacuglide/local-script", json);
+    if (landed()) {
       s.want = (int)Want::Script;
       s.script = d.script;
       s.scriptPlaying = 1;
       s.valvePlus = s.valveMinus = 0;
     }
   } else if (d.want == Want::Script && s.scriptPlaying != d.scriptPlaying) {
-    if (put(d.scriptPlaying ? "/vacuglide/local-script/start" : "/vacuglide/local-script/stop") >= 0)
-      s.scriptPlaying = d.scriptPlaying;
+    put(d.scriptPlaying ? "/vacuglide/local-script/start" : "/vacuglide/local-script/stop");
+    if (landed()) s.scriptPlaying = d.scriptPlaying;
   } else {
     return false;
   }
@@ -220,8 +265,10 @@ static bool step(const Desired &d, Sent &s) {
   } else if (code == 429) {
     setError("rate limited");
     vTaskDelay(pdMS_TO_TICKS(1000));
+  } else if (code >= 500) {
+    setError("Autoblow error %d", code);
+    vTaskDelay(pdMS_TO_TICKS(1000));
   } else if (code > 0) {
-    // Other 4xx (e.g. script start in the wrong mode): recorded as sent, not retried.
     setError("HTTP %d", code);
     Serial.printf("HTTP %d: %s\n", code, body.c_str());
   } else {
@@ -268,8 +315,9 @@ static void netTask(void *) {
       }
       setOnline(true);
       sent = Sent();
+      pulseDone = target().pulseSeq;  // a pulse from before the loss is stale
     }
-    if (step(desired(), sent)) continue;
+    if (step(target(), sent)) continue;
 
     // Nothing to send: poll state now and then, otherwise wait for a change.
     if (millis() - lastPoll > 3000) {
@@ -290,6 +338,7 @@ static void netTask(void *) {
 
 void begin() {
   mtx = xSemaphoreCreateMutex();
+  strlcpy(token, settings.token.c_str(), sizeof token);
   xTaskCreatePinnedToCore(netTask, "autoblow", 8192, nullptr, 5, &task, 0);
 }
 

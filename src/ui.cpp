@@ -9,6 +9,7 @@
 #include "board.h"
 #include "control.h"
 #include "settings.h"
+#include "version.h"
 #include "wlan.h"
 
 using control::Active;
@@ -25,7 +26,7 @@ static lv_obj_t *tabview;
 static lv_obj_t *rSlider, *rSliderLabel, *rStartBtn;
 static lv_obj_t *apStartBtn, *apStateLabel, *apBar;
 static lv_obj_t *scButtons[SCRIPT_SLOTS], *scToggleBtn;
-static lv_obj_t *stSsid, *stPass, *stToken, *stScanBtn, *stSaveBtn, *stInfo;
+static lv_obj_t *stSsid, *stPass, *stToken, *stScanBtn, *stSaveBtn, *stOffBtn, *stInfo;
 
 // ---------- helpers ----------
 
@@ -47,8 +48,14 @@ static lv_obj_t *button(lv_obj_t *parent, const char *text, int w, int h, lv_col
   return b;
 }
 
+// lv_label_set_text always redraws; the 200 ms refresh sets a dozen labels, so
+// skip the ones that didn't change (keeps the display's PSRAM traffic down).
+static void setLabel(lv_obj_t *l, const char *text) {
+  if (strcmp(lv_label_get_text(l), text) != 0) lv_label_set_text(l, text);
+}
+
 static void setButtonText(lv_obj_t *b, const char *text, lv_color_t color) {
-  lv_label_set_text(lv_obj_get_child(b, 0), text);
+  setLabel(lv_obj_get_child(b, 0), text);
   lv_obj_set_style_bg_color(b, color, 0);
 }
 
@@ -70,7 +77,8 @@ static lv_obj_t *holdButton(lv_obj_t *parent, const char *text, int w, int h, vo
 // One-of-N selector. `fn` gets the chosen index.
 static void segEvent(lv_event_t *e) {
   auto fn = (void (*)(int))lv_event_get_user_data(e);
-  fn(lv_buttonmatrix_get_selected_button(lv_event_get_target_obj(e)));
+  uint32_t i = lv_buttonmatrix_get_selected_button(lv_event_get_target_obj(e));
+  if (i != LV_BUTTONMATRIX_BUTTON_NONE) fn(i);
 }
 
 static lv_obj_t *segmented(lv_obj_t *parent, const char **map, int selected, void (*fn)(int)) {
@@ -94,13 +102,13 @@ static lv_obj_t *row(lv_obj_t *parent, int h) {
 }
 
 static lv_obj_t *labeledSeg(lv_obj_t *parent, const char *title, const char **map, int sel,
-                            void (*fn)(int)) {
-  lv_obj_t *r = row(parent, 56);
+                            void (*fn)(int), int h = 56) {
+  lv_obj_t *r = row(parent, h);
   lv_obj_t *l = lv_label_create(r);
   lv_label_set_text(l, title);
   lv_obj_set_width(l, 130);
   lv_obj_t *m = segmented(r, map, sel, fn);
-  lv_obj_set_height(m, 56);
+  lv_obj_set_height(m, h);
   lv_obj_set_flex_grow(m, 1);
   lv_obj_set_style_pad_all(m, 4, 0);
   return m;
@@ -130,7 +138,7 @@ static void editText(const char *title, const char *initial, bool password, Text
                      intptr_t data = 0) {
   lv_obj_t *bg = lv_obj_create(lv_layer_top());
   lv_obj_remove_style_all(bg);
-  lv_obj_set_size(bg, 800, 480);
+  lv_obj_set_size(bg, SCREEN_W, SCREEN_H);
   lv_obj_set_style_bg_color(bg, lv_color_hex(0x121212), 0);
   lv_obj_set_style_bg_opa(bg, LV_OPA_COVER, 0);
   lv_obj_add_flag(bg, LV_OBJ_FLAG_CLICKABLE);  // nothing underneath gets touches
@@ -159,13 +167,14 @@ static void editText(const char *title, const char *initial, bool password, Text
   }
 
   lv_obj_t *kb = lv_keyboard_create(bg);
-  lv_obj_set_size(kb, 800, 320);
+  lv_obj_set_size(kb, SCREEN_W, 320);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_keyboard_set_textarea(kb, ta);
 
   auto *ctx = new EditCtx{done, data, bg};
   lv_obj_add_event_cb(ta, editEvent, LV_EVENT_ALL, ctx);
-  lv_obj_add_event_cb(bg, [](lv_event_t *e) { delete (EditCtx *)lv_event_get_user_data(e); },
+  // Freed with the field itself, the last object that can still use it.
+  lv_obj_add_event_cb(ta, [](lv_event_t *e) { delete (EditCtx *)lv_event_get_user_data(e); },
                       LV_EVENT_DELETE, ctx);
 }
 
@@ -173,7 +182,7 @@ static void editText(const char *title, const char *initial, bool password, Text
 
 static void buildTopBar(lv_obj_t *scr) {
   lv_obj_t *bar = lv_obj_create(scr);
-  lv_obj_set_size(bar, 800, 64);
+  lv_obj_set_size(bar, SCREEN_W, 64);
   lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 0);
   lv_obj_set_style_radius(bar, 0, 0);
   lv_obj_set_style_border_width(bar, 0, 0);
@@ -202,7 +211,7 @@ static void buildTopBar(lv_obj_t *scr) {
   lv_obj_add_flag(battLabel, LV_OBJ_FLAG_HIDDEN);
 
   battBanner = lv_label_create(lv_layer_top());
-  lv_obj_set_size(battBanner, 800, LV_SIZE_CONTENT);
+  lv_obj_set_size(battBanner, SCREEN_W, LV_SIZE_CONTENT);
   lv_obj_align(battBanner, LV_ALIGN_BOTTOM_MID, 0, 0);  // bottom: keeps the tabs usable
   lv_obj_set_style_bg_color(battBanner, RED, 0);
   lv_obj_set_style_bg_opa(battBanner, LV_OPA_COVER, 0);
@@ -212,7 +221,7 @@ static void buildTopBar(lv_obj_t *scr) {
 
   // Shown when the link drops while the device was moving: STOP can't reach it.
   lostBanner = lv_label_create(lv_layer_top());
-  lv_obj_set_size(lostBanner, 800, LV_SIZE_CONTENT);
+  lv_obj_set_size(lostBanner, SCREEN_W, LV_SIZE_CONTENT);
   lv_obj_align(lostBanner, LV_ALIGN_TOP_MID, 0, 64);
   lv_obj_set_style_bg_color(lostBanner, RED, 0);
   lv_obj_set_style_bg_opa(lostBanner, LV_OPA_COVER, 0);
@@ -347,7 +356,7 @@ static void scriptEvent(lv_event_t *e) {
   if (lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED) {
     control::scriptPlay(slot);
   } else if (lv_event_get_code(e) == LV_EVENT_LONG_PRESSED) {
-    char title[40];
+    char title[48];
     snprintf(title, sizeof title, "Name for script %d (empty = none)", slot + 1);
     editText(title, settings.scriptNames[slot].c_str(), false, scriptRenamed, slot);
   }
@@ -390,23 +399,40 @@ static void buildScripts(lv_obj_t *tab) {
 
 static String pSsid, pPass, pToken;  // pending, not saved yet
 
+static bool settingsDirty() {
+  return pSsid != settings.wifiSsid || pPass != settings.wifiPass || pToken != settings.token;
+}
+
 static void settingsShow() {
   lv_label_set_text(lv_obj_get_child(stSsid, 0), pSsid.length() ? pSsid.c_str() : "(none)");
   lv_label_set_text(lv_obj_get_child(stPass, 0),
                     pPass.length() ? LV_SYMBOL_BULLET LV_SYMBOL_BULLET LV_SYMBOL_BULLET
                                      LV_SYMBOL_BULLET LV_SYMBOL_BULLET LV_SYMBOL_BULLET
                                    : "(none)");
-  lv_label_set_text(lv_obj_get_child(stToken, 0), pToken.length() ? pToken.c_str() : "(none)");
-  bool dirty = pSsid != settings.wifiSsid || pPass != settings.wifiPass || pToken != settings.token;
-  lv_obj_set_state(stSaveBtn, LV_STATE_DISABLED, !dirty);
+  // Token: only the last 3 characters show, so a photo of the panel doesn't leak it.
+  String tokenShown;
+  if (pToken.length() > 3) {
+    for (unsigned i = 3; i < pToken.length(); i++) tokenShown += LV_SYMBOL_BULLET;
+    tokenShown += pToken.substring(pToken.length() - 3);
+  } else {
+    tokenShown = pToken;
+  }
+  lv_label_set_text(lv_obj_get_child(stToken, 0), pToken.length() ? tokenShown.c_str() : "(none)");
+  // Nothing changed: the same button is a plain Restart.
+  bool dirty = settingsDirty();
+  if (!lv_obj_has_state(stSaveBtn, LV_STATE_DISABLED))
+    setButtonText(stSaveBtn, dirty ? "Save & restart" : LV_SYMBOL_REFRESH " Restart",
+                  dirty ? GREEN : lv_color_hex(0x455A64));
 }
 
+static const int ST_ROW = 48;  // Settings rows: six of them have to fit above the fold
+
 static lv_obj_t *valueField(lv_obj_t *parent, const char *title, lv_event_cb_t cb) {
-  lv_obj_t *r = row(parent, 56);
+  lv_obj_t *r = row(parent, ST_ROW);
   lv_obj_t *l = lv_label_create(r);
   lv_label_set_text(l, title);
   lv_obj_set_width(l, 150);
-  lv_obj_t *b = button(r, "", 0, 56, lv_color_hex(0x37474F), cb);
+  lv_obj_t *b = button(r, "", 0, ST_ROW, lv_color_hex(0x37474F), cb);
   lv_obj_set_flex_grow(b, 1);
   lv_obj_t *v = lv_obj_get_child(b, 0);
   lv_obj_set_style_text_font(v, &lv_font_montserrat_20, 0);
@@ -433,7 +459,7 @@ static void networkChosen(lv_event_t *e) {
 
 static void showNetworks(int n) {
   lv_obj_t *bg = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(bg, 800, 480);
+  lv_obj_set_size(bg, SCREEN_W, SCREEN_H);
   lv_obj_set_style_radius(bg, 0, 0);
   lv_obj_set_style_border_width(bg, 0, 0);
   lv_obj_set_flex_flow(bg, LV_FLEX_FLOW_COLUMN);
@@ -471,16 +497,48 @@ static void scanPoll(lv_timer_t *t) {
   showNetworks(n);  // n < 0: scan failed, shows "No networks found"
 }
 
-static void restartPoll(lv_timer_t *t) {
-  // Give the STOP a moment to reach the device, but don't hang on a dead network.
-  static uint32_t start = millis();
-  uint32_t ms = millis() - start;
-  if ((ms > 800 && !deviceMoving(autoblow::status())) || ms > 5000) ESP.restart();
+// Software can't power the board off: the IP5306 charger has no data bus, and
+// the board draws too much even in deep sleep for its light-load cut-off (tried
+// 2026-10-18). So Power off explains the battery button and offers Screen off.
+static void powerOffTap(lv_event_t *) {
+  lv_obj_t *bg = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(bg, SCREEN_W, SCREEN_H);
+  lv_obj_set_style_radius(bg, 0, 0);
+  lv_obj_set_style_border_width(bg, 0, 0);
+  lv_obj_set_style_bg_color(bg, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(bg, LV_OPA_70, 0);
+  lv_obj_remove_flag(bg, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *box = lv_obj_create(bg);
+  lv_obj_set_size(box, 760, LV_SIZE_CONTENT);
+  lv_obj_center(box);
+  lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_all(box, 24, 0);
+  lv_obj_set_style_pad_row(box, 20, 0);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *t = lv_label_create(box);
+  lv_label_set_text(t, "To power off, hold the battery button\non the panel for 2 seconds.\n"
+                       "Press it briefly to turn back on.");
+  lv_obj_set_width(t, lv_pct(100));
+
+  lv_obj_t *r = row(box, 64);
+  button(r, "Cancel", 0, 64, GREY, [](lv_event_t *e) {
+    lv_obj_delete_async((lv_obj_t *)lv_event_get_user_data(e));
+  }, bg);
+  lv_obj_set_flex_grow(lv_obj_get_child(r, 0), 1);
+  button(r, "Screen off", 0, 64, lv_color_hex(0x455A64), [](lv_event_t *e) {
+    // Stops the device; the next touch only wakes the screen.
+    control::stopAll();
+    lv_obj_delete_async((lv_obj_t *)lv_event_get_user_data(e));
+    boardScreenOff();
+  }, bg);
+  lv_obj_set_flex_grow(lv_obj_get_child(r, 1), 1);
 }
 
 static void buildSettings(lv_obj_t *tab) {
   lv_obj_set_flex_flow(tab, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_row(tab, 10, 0);
+  lv_obj_set_style_pad_row(tab, 6, 0);
 
   pSsid = settings.wifiSsid;
   pPass = settings.wifiPass;
@@ -492,7 +550,7 @@ static void buildSettings(lv_obj_t *tab) {
       settingsShow();
     });
   });
-  stScanBtn = button(lv_obj_get_parent(stSsid), "Scan", 140, 56, CYAN, [](lv_event_t *) {
+  stScanBtn = button(lv_obj_get_parent(stSsid), "Scan", 140, ST_ROW, CYAN, [](lv_event_t *) {
     if (WiFi.scanComplete() == WIFI_SCAN_RUNNING) return;
     WiFi.scanNetworks(true);
     setButtonText(stScanBtn, "...", GREY);
@@ -516,22 +574,39 @@ static void buildSettings(lv_obj_t *tab) {
   labeledSeg(tab, "Screen off", sleep, sel, [](int i) {
     settings.sleepMin = SLEEP_MIN[i];
     settingsSaveSleep();
-  });
+  }, ST_ROW);
 
-  lv_obj_t *r = row(tab, 64);
+  lv_obj_t *dr = row(tab, ST_ROW);
+  lv_obj_t *dl = lv_label_create(dr);
+  lv_label_set_text(dl, "Display");
+  lv_obj_set_width(dl, 150);
+  lv_obj_t *fb = button(dr, LV_SYMBOL_REFRESH "  Flip screen", 0, ST_ROW, lv_color_hex(0x37474F), [](lv_event_t *) {
+    settings.flip = !settings.flip;  // a plain toggle: a Normal/Upside down selector turns with the screen
+    settingsSaveFlip();
+    boardSetFlip(settings.flip);
+  });
+  lv_obj_set_flex_grow(fb, 1);
+  lv_obj_set_style_text_font(lv_obj_get_child(fb, 0), &lv_font_montserrat_20, 0);
+
+  lv_obj_t *r = row(tab, 60);
   stInfo = lv_label_create(r);
   lv_obj_set_flex_grow(stInfo, 1);
   lv_obj_set_style_text_font(stInfo, &lv_font_montserrat_14, 0);
-  stSaveBtn = button(r, "Save & restart", 300, 64, GREEN, [](lv_event_t *) {
-    settings.wifiSsid = pSsid;
-    settings.wifiPass = pPass;
-    settings.token = pToken;
-    settingsSave();
-    control::stopAll();
+  stSaveBtn = button(r, "", 230, 60, GREY, [](lv_event_t *) {
+    if (settingsDirty()) {
+      settings.wifiSsid = pSsid;
+      settings.wifiPass = pPass;
+      settings.token = pToken;
+      settingsSave();  // plain Restart writes nothing
+    }
+    lv_obj_add_state(stSaveBtn, LV_STATE_DISABLED);
+    lv_obj_add_state(stOffBtn, LV_STATE_DISABLED);
     setButtonText(stSaveBtn, "Restarting...", GREY);
-    lv_timer_create(restartPoll, 100, nullptr);
+    control::stopAndRestart();
   });
   lv_obj_set_style_bg_color(stSaveBtn, lv_color_hex(0x424242), LV_STATE_DISABLED);
+  stOffBtn = button(r, LV_SYMBOL_POWER " Power off", 200, 60, lv_color_hex(0x8E2A2A), powerOffTap);
+  lv_obj_set_style_bg_color(stOffBtn, lv_color_hex(0x424242), LV_STATE_DISABLED);
 
   settingsShow();
 }
@@ -557,26 +632,27 @@ static void refresh(lv_timer_t *) {
 
   lv_color_t dot = !st.wifi ? RED : st.online ? GREEN : ORANGE;
   lv_obj_set_style_bg_color(statusDot, dot, 0);
+  char text[160];
   if (!st.wifi) {
     // Problems only the Settings tab can fix get a pointer there.
-    bool fixable = !strcmp(w.problem, "wrong password?") ||
-                   !strcmp(w.problem, "network not found") || !strcmp(w.problem, "not set up");
-    lv_label_set_text_fmt(statusLabel, "No Wi-Fi: %s%s", w.problem[0] ? w.problem : "connecting...",
-                          fixable ? " Check Settings" : "");
+    snprintf(text, sizeof text, "No Wi-Fi: %s%s", w.problem[0] ? w.problem : "connecting...",
+             w.fixable ? " Check Settings" : "");
   } else if (!st.online) {
-    lv_label_set_text(statusLabel, st.error[0] ? st.error : "Connecting...");
+    snprintf(text, sizeof text, "%s", st.error[0] ? st.error : "Connecting...");
   } else if (st.error[0]) {
-    lv_label_set_text_fmt(statusLabel, "%s - %s", modeText(st.mode), st.error);
+    snprintf(text, sizeof text, "%s - %s", modeText(st.mode), st.error);
   } else if (bars == 1) {
-    lv_label_set_text_fmt(statusLabel, "%s - weak Wi-Fi", modeText(st.mode));
+    snprintf(text, sizeof text, "%s - weak Wi-Fi", modeText(st.mode));
   } else {
-    lv_label_set_text(statusLabel, modeText(st.mode));
+    snprintf(text, sizeof text, "%s", modeText(st.mode));
   }
+  setLabel(statusLabel, text);
 
   static const lv_color_t BAR_COLOR[] = {RED, RED, ORANGE, GREEN, GREEN};
   lv_obj_set_style_text_color(wifiLabel, BAR_COLOR[bars], 0);
-  if (w.up) lv_label_set_text_fmt(wifiLabel, LV_SYMBOL_WIFI " %d", w.rssi);
-  else lv_label_set_text(wifiLabel, LV_SYMBOL_WIFI " --");
+  if (w.up) snprintf(text, sizeof text, LV_SYMBOL_WIFI " %d", w.rssi);
+  else snprintf(text, sizeof text, LV_SYMBOL_WIFI " --");
+  setLabel(wifiLabel, text);
 
   // Battery (only with a fuel gauge): stack it under the Wi-Fi signal.
   battery::Info b = battery::info();
@@ -591,7 +667,8 @@ static void refresh(lv_timer_t *) {
     const char *icon = pct > 80 ? LV_SYMBOL_BATTERY_FULL : pct > 55 ? LV_SYMBOL_BATTERY_3
                      : pct > 30 ? LV_SYMBOL_BATTERY_2 : pct > 10 ? LV_SYMBOL_BATTERY_1
                      : LV_SYMBOL_BATTERY_EMPTY;
-    lv_label_set_text_fmt(battLabel, "%s%s %d%%", b.charging ? LV_SYMBOL_CHARGE " " : "", icon, pct);
+    snprintf(text, sizeof text, "%s%s %d%%", b.charging ? LV_SYMBOL_CHARGE " " : "", icon, pct);
+    setLabel(battLabel, text);
     lv_obj_set_style_text_color(battLabel, b.charging || pct > 20 ? GREEN : pct > 10 ? ORANGE : RED, 0);
   }
 
@@ -612,8 +689,9 @@ static void refresh(lv_timer_t *) {
   bool lost = !st.online && lastMoving;
   lv_obj_set_flag(lostBanner, LV_OBJ_FLAG_HIDDEN, !lost);
 
-  if (moving) lv_label_set_text_fmt(speedLabel, "%d%%", st.targetSpeed);
-  else lv_label_set_text(speedLabel, "");
+  if (moving) snprintf(text, sizeof text, "%d%%", st.targetSpeed);
+  else text[0] = 0;
+  setLabel(speedLabel, text);
 
   // Remote
   if (a == Active::Remote) setButtonText(rStartBtn, LV_SYMBOL_PAUSE " Pause", ORANGE);
@@ -627,11 +705,12 @@ static void refresh(lv_timer_t *) {
   // Autopilot
   if (a == Active::Autopilot) {
     setButtonText(apStartBtn, LV_SYMBOL_PAUSE " Pause", ORANGE);
-    lv_label_set_text_fmt(apStateLabel, "Autopilot running at %d%%", control::autopilotSpeed());
+    snprintf(text, sizeof text, "Autopilot running at %d%%", control::autopilotSpeed());
   } else {
     setButtonText(apStartBtn, LV_SYMBOL_PLAY " Start", GREEN);
-    lv_label_set_text(apStateLabel, "Autopilot standby");
+    snprintf(text, sizeof text, "Autopilot standby");
   }
+  setLabel(apStateLabel, text);
   lv_bar_set_value(apBar, control::autopilotProgress(), LV_ANIM_OFF);
 
   // Scripts
@@ -651,11 +730,12 @@ static void refresh(lv_timer_t *) {
     snprintf(battLine, sizeof battLine, "Battery %d%%, %.2f V%s (%s)", (int)lroundf(b.percent),
              b.volts, b.charging ? ", charging" : "", b.chip);
   else
-    snprintf(battLine, sizeof battLine, "Battery level: no fuel gauge connected");
+    snprintf(battLine, sizeof battLine, "Battery level: no battery or gauge found");
   if (w.up)
-    lv_label_set_text_fmt(stInfo, "Panel %s, signal %d dBm\n%s\nBuilt " __DATE__,
-                          WiFi.localIP().toString().c_str(), w.rssi, battLine);
-  else lv_label_set_text_fmt(stInfo, "Wi-Fi: %s\n%s\nBuilt " __DATE__, w.problem, battLine);
+    snprintf(text, sizeof text, "Panel %s, signal %d dBm\n%s\nVersion " FW_VERSION ", built " __DATE__,
+             WiFi.localIP().toString().c_str(), w.rssi, battLine);
+  else snprintf(text, sizeof text, "Wi-Fi: %s\n%s\nVersion " FW_VERSION ", built " __DATE__, w.problem, battLine);
+  setLabel(stInfo, text);
 
   // Screen sleep, only while nothing runs, so STOP is always one tap away.
   if (boardScreenIsOn() && settings.sleepMin > 0 && a == Active::None && !lost &&
@@ -663,14 +743,39 @@ static void refresh(lv_timer_t *) {
     boardScreenOff();
 }
 
+static SemaphoreHandle_t lvMutex, callSlot, callDone;
+static void (*callFn)(void *);
+static void *callArg;
+
+void uiLock() { xSemaphoreTakeRecursive(lvMutex, portMAX_DELAY); }
+void uiUnlock() { xSemaphoreGiveRecursive(lvMutex); }
+
+void uiCall(void (*fn)(void *), void *arg) {
+  xSemaphoreTake(callSlot, portMAX_DELAY);  // one caller at a time
+  callArg = arg;
+  callFn = fn;  // loop() picks it up
+  xSemaphoreTake(callDone, portMAX_DELAY);
+  xSemaphoreGive(callSlot);
+}
+
+void uiPump() {
+  if (!callFn) return;
+  callFn(callArg);
+  callFn = nullptr;
+  xSemaphoreGive(callDone);
+}
+
 void uiBegin() {
+  lvMutex = xSemaphoreCreateRecursiveMutex();
+  callSlot = xSemaphoreCreateMutex();
+  callDone = xSemaphoreCreateBinary();
   lv_obj_t *scr = lv_screen_active();
   lv_obj_set_style_bg_color(scr, lv_color_hex(0x121212), 0);
 
   buildTopBar(scr);
 
   lv_obj_t *tv = tabview = lv_tabview_create(scr);
-  lv_obj_set_size(tv, 800, 480 - 64);
+  lv_obj_set_size(tv, SCREEN_W, SCREEN_H - 64);
   lv_obj_align(tv, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_tabview_set_tab_bar_size(tv, 52);
 
@@ -687,4 +792,36 @@ void uiShowTab(int tab) {
   lv_tabview_set_active(tabview, constrain(tab, 0, 3), LV_ANIM_OFF);
   refresh(nullptr);
   lv_refr_now(nullptr);
+}
+
+// ---------- firmware update screen ----------
+
+static lv_obj_t *updScreen, *updLabel;
+
+void uiShowUpdating(int pct) {
+  if (!updScreen) {
+    updScreen = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(updScreen, SCREEN_W, SCREEN_H);
+    lv_obj_set_style_radius(updScreen, 0, 0);
+    lv_obj_set_style_border_width(updScreen, 0, 0);
+    lv_obj_set_style_bg_color(updScreen, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(updScreen, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(updScreen, LV_OBJ_FLAG_SCROLLABLE);
+    updLabel = lv_label_create(updScreen);
+    lv_obj_set_style_text_font(updLabel, &lv_font_montserrat_40, 0);
+    lv_obj_set_style_text_color(updLabel, lv_color_hex(0x4FC3F7), 0);
+    lv_obj_set_style_text_align(updLabel, LV_TEXT_ALIGN_CENTER, 0);
+    // Near the top: the rest of the screen is plain black, which looks the
+    // same even when the display briefly repeats a strip during a flash write.
+    lv_obj_align(updLabel, LV_ALIGN_TOP_MID, 0, 24);
+  }
+  if (pct < 0) lv_label_set_text(updLabel, "Updating firmware");
+  else lv_label_set_text_fmt(updLabel, "Updating firmware  %d%%", pct);
+  lv_refr_now(nullptr);
+}
+
+void uiHideUpdating() {
+  if (!updScreen) return;
+  lv_obj_delete(updScreen);
+  updScreen = updLabel = nullptr;
 }

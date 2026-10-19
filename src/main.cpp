@@ -23,6 +23,7 @@ void setup() {
   boardBegin();
   battery::begin();  // after boardBegin(): shares the touch I2C bus
   uiBegin();
+  boardSetFlip(settings.flip);
   control::begin();
 
   wlan::begin();
@@ -33,13 +34,16 @@ void setup() {
 }
 
 void loop() {
-  lv_timer_handler();
-  wlan::loop();
-  battery::loop();
-  rollback::loop();
+  {
+    UiLock l;  // the web server task takes the same lock for UI work
+    lv_timer_handler();
+    uiPump();
+    wlan::loop();
+    battery::loop();
+    rollback::loop();
+  }
 #ifdef TEST_ROLLBACK_CRASH  // test builds only: crash 15 s after boot
   if (millis() > 15000) abort();
 #endif
-  otaLoop();
   delay(5);
 }

@@ -6,3 +6,5 @@
 #define DEVICE_TOKEN "your-autoblow-device-token"
 #define OTA_PASSWORD "pick-a-password"  // for ./ota.sh uploads over Wi-Fi
 #define OTA_HOST     "vgremote.local"   // where ./ota.sh sends updates (hostname or IP)
+// #define OTA_HOST_WS  "vgremote-ws.local"  // same, for a Waveshare panel (env waveshare5-ota)
+// #define PANEL_HOSTNAME "vgremote"  // Guition network name (the waveshare5 env sets "vgremote-ws" itself)

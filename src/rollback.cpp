@@ -21,12 +21,19 @@ static bool wifiUp;         // Wi-Fi seen up (continuously) since wifiSince
 static uint32_t wifiSince;
 static esp_timer_handle_t deadline;
 
-// Runs in the esp_timer task, so it fires even if loop() is stuck.
+static volatile bool expired;  // deadline passed: loop() sends STOP, then we reboot
+
+// Runs in the esp_timer task, so it fires even if loop() is stuck. It must not
+// touch control:: (LVGL thread only), so it only flags loop() and rearms itself
+// for the reboot 3 s later; a stuck loop() just skips the STOP.
 static void onDeadline(void *) {
   if (!pending) return;
-  Serial.println("rollback: new firmware not confirmed in time, going back to the previous one");
-  control::stopAll();
-  delay(500);  // let the STOP request go out
+  if (!expired) {
+    Serial.println("rollback: new firmware not confirmed in time, going back to the previous one");
+    expired = true;
+    esp_timer_start_once(deadline, 3000000);
+    return;
+  }
   esp_ota_mark_app_invalid_rollback_and_reboot();
 }
 
@@ -46,6 +53,14 @@ void begin() {
 
 void loop() {
   if (!pending) return;
+  if (expired) {
+    static bool stopped;
+    if (!stopped) {
+      stopped = true;
+      control::stopAll();
+    }
+    return;
+  }
   if (!wlan::info().up) {
     wifiUp = false;
     return;

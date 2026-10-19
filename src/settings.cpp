@@ -17,6 +17,7 @@ void settingsLoad() {
   settings.wifiPass = p.getString("pass", WIFI_PASS);
   settings.token = p.getString("token", DEVICE_TOKEN);
   settings.sleepMin = p.getInt("sleep", settings.sleepMin);
+  settings.flip = p.getBool("flip", settings.flip);
   for (int i = 0; i < SCRIPT_SLOTS; i++)
     settings.scriptNames[i] = p.getString(nameKey(i).c_str(), "");
   p.end();
@@ -35,6 +36,13 @@ void settingsSaveSleep() {
   Preferences p;
   p.begin(NS, false);
   p.putInt("sleep", settings.sleepMin);
+  p.end();
+}
+
+void settingsSaveFlip() {
+  Preferences p;
+  p.begin(NS, false);
+  p.putBool("flip", settings.flip);
   p.end();
 }
 

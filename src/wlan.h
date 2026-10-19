@@ -7,6 +7,7 @@ struct Info {
   bool up = false;
   int rssi = 0;           // dBm, 0 while down
   const char *problem;    // why it is down, "" while up
+  bool fixable = false;   // the problem is one the Settings tab can fix
 };
 
 void begin();  // connects with settings.wifiSsid / wifiPass
