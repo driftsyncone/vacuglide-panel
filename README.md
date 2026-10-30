@@ -1,5 +1,9 @@
 # vacuglide-panel
 
+> **This project is now called [Twiddle](https://github.com/driftsyncone/twiddle).** It grew support for more toys
+> and a second board (a 7" ESP32-P4 panel) and is developed there from now on. This repository stays up as the
+> 1.x release history and is no longer updated.
+
 A standalone touchscreen remote for the **Autoblow VacuGlide**, running on a
 **Guition JC8048W550** (ESP32-S3, 5" 800x480 touch display). It talks straight
 to Autoblow's public device API with your device token. No phone, PC or
